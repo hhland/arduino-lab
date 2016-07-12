@@ -33,6 +33,9 @@
 #include "pitches.h"
 #include <IRSendRev.h>
 
+#include <Servo.h>
+
+
 #define BIT_LEN         0
 #define BIT_START_H     1
 #define BIT_START_L     2
@@ -41,6 +44,7 @@
 #define BIT_DATA_LEN    5
 #define BIT_DATA        6
 
+Servo servo;  // create servo object to control a servo
 
 int melody[] = {
   NOTE_C4, NOTE_G3, NOTE_G3, NOTE_A3, NOTE_G3, 0, NOTE_B3, NOTE_C4
@@ -59,8 +63,11 @@ const int PIN_SMOKE=A5;
 const int PIN_HUMAN=A0;
 const int PIN_TONE=0;
 const int PIN_BUTTON=2;
-const int PIN_FADE=8;
+const int PIN_FADE=13;
 const int PIN_IR=3;
+const int PIN_IR_LED=8;
+const int PIN_RELAY=2;
+const int PIN_SERVO=4;
 
 int buttonState;             // the current reading from the input pin
 int lastButtonState = LOW;   // the previous reading from the input pin
@@ -71,21 +78,24 @@ int ledState = HIGH;
 int brightness = 0;    // how bright the LED is
 int fadeAmount = 5;    // how many points to fade the LED by
 
+int layState=LOW;
+
 void setup()
 {
     //tone_molody(1);
    
     Serial.begin(9600);
-    IR.Init(PIN_IR);
-    
+    init_ir();
     init_rgb();
     init_led();
     //init_fire();
     init_smoke();
-    init_button();
-    pinMode(PIN_TONE,OUTPUT); 
+    init_relay();
+    init_servo();
+    //init_button();
+    //pinMode(PIN_TONE,OUTPUT); 
     led_all_on();
-    tone_alert(10000);
+    //tone_alert(10000);
     delay(2000);
      rgb_off();
      //tone_off(); 
@@ -106,17 +116,18 @@ void loop()
   //l = digitalRead(PIN_BUTTON);
   //onButtonPress(l);
 
-  //onFade();
+  onFade();
    if(IR.IsDta())                  // get IR data
     {
         
         onIRRecv();
-        digitalWrite(PIN_FADE, HIGH);
+        digitalWrite(PIN_IR_LED, HIGH);
     }else{
-        digitalWrite(PIN_FADE, LOW);  
+        digitalWrite(PIN_IR_LED, LOW);  
     }
     delay(120);
 }
+
 
 void onFade(){
 
@@ -171,7 +182,11 @@ void onIRRecv(){
    int dta2=dta[BIT_DATA+2],dta3=dta[BIT_DATA+3];
    if(dta2==162&&dta3==93){
       //power
-      init(); 
+      //init(); 
+       rgb_off();
+       led_all_off();
+       digitalWrite(PIN_RELAY,LOW);
+       servo.write(90);
    }
    else if(dta2==104&&dta3==151){
       //0
@@ -192,14 +207,68 @@ void onIRRecv(){
    }else if(dta2==56&&dta3==199){
       //5
       rgb_purple();
+   }else if(dta2==56&&dta3==199){
+      //5
+      rgb_purple();
    }
-   else if(dta2==34&&dta3==221){
-      //play pause
-      tone_alert(1000);
+   else if(dta2==90&&dta3==165){
+      //6
+      rgb_white();
+    }else if(dta2==66&&dta3==189){
+      //7
+      rgb_white();
+    }else if(dta2==74&&dta3==181){
+      //8
+      rgb_white();
+    }else if(dta2==82&&dta3==173){
+      //9
+      rgb_white();
     }
    else if(dta2==226&&dta3==29){
       //sound off
       tone_off();
+    }
+    else if(dta2==224&&dta3==31){
+      //eq
+      layState=!layState;
+      digitalWrite(PIN_RELAY,layState);
+    }else if(dta2==168&&dta3==87){
+      //vol-
+      servo.write(120);
+      delay(15);
+    }else if(dta2==144&&dta3==111){
+      //vol+
+      servo.write(60);
+      delay(15);
+    }else if(dta2==2&&dta3==253){
+      //prev
+      servo.write(130);
+      delay(15); 
+    }else if(dta2==194&&dta3==61){
+      //next
+      servo.write(50);
+      delay(15);
+    }
+    else if(dta2==152&&dta3==103){
+      //rpt
+      servo.write(90);
+      delay(15);
+    }
+    else if(dta2==176&&dta3==79){
+      //scan
+      servo.write(50);
+      delay(2000);
+      servo.write(130);
+      delay(2000);
+      servo.write(90);
+    }
+    else if(dta2==98&&dta3==157){
+      //mode
+    }
+    else if(dta2==98&&dta3==157){
+      //mode
+    }else if(dta2==34&&dta3==221){
+      //play
     }
          
 }
@@ -248,7 +317,7 @@ void onLightLevelRead(int level){
       info+=String(level);
       //Serial.println(info);
       int s=LOW;
-      if(level>6){
+      if(level>4){
         s=HIGH;
       }
       digitalWrite(PIN_LED_RYBG[2],s);
@@ -290,7 +359,7 @@ void onHumanLevelRead(int level){
       info+=String(level);
       //Serial.println(info);
       int s=LOW;
-      if(level>0){
+      if(level>512){
         s=HIGH;
       }
       digitalWrite(PIN_LED_RYBG[1],s);
@@ -318,7 +387,7 @@ int readSmokeLevel(){
 
 int readHumanLevel(){
 
-    int level=analogReadLevel(PIN_HUMAN);
+    int level=analogRead(PIN_HUMAN);
     return level;    
 
 }
@@ -369,6 +438,22 @@ void init_button(){
 
 void init_tone(){
     pinMode(PIN_TONE,OUTPUT);  
+}
+
+void init_relay(){
+    pinMode(PIN_RELAY,OUTPUT);  
+}
+
+void init_ir(){
+
+  IR.Init(PIN_IR);
+  pinMode(PIN_IR_LED,OUTPUT);   
+  
+}
+
+void init_servo(){
+   servo.attach(PIN_SERVO); 
+   servo.write(90); 
 }
 
 void led_all_off(){
