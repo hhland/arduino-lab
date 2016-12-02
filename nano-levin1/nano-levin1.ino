@@ -6,9 +6,9 @@
  * Author     : Seeed
  * Modified Time: July 2015
  * Description: Connect the IR receiver pins to D2 for this demo. You can see the remote control's infrared data 
- *   			that received through a serial port terminal, then write the received infrared data into send.ino 
- *				and downloaded to the board with Infrared Emitter Grove, so you can send the same data with 
- *				remote control's button.
+ *         that received through a serial port terminal, then write the received infrared data into send.ino 
+ *        and downloaded to the board with Infrared Emitter Grove, so you can send the same data with 
+ *        remote control's button.
  * 
  * The MIT License (MIT)
  *
@@ -30,14 +30,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "pitches.h"
+
 #include <IRSendRev.h>
 
 #include <Servo.h>
-#include <DHT.h>
-#include <DHT_U.h>
 
-#define DHTTYPE         DHT22
 
 #define BIT_LEN         0
 #define BIT_START_H     1
@@ -49,30 +46,27 @@
 
 Servo servo;  // create servo object to control a servo
 
-int melody[] = {
-  NOTE_C4, NOTE_G3, NOTE_G3, NOTE_A3, NOTE_G3, 0, NOTE_B3, NOTE_C4
-};
+
 
 // note durations: 4 = quarter note, 8 = eighth note, etc.:
 int noteDurations[] = {
   4, 8, 8, 4, 4, 4, 4, 4
 };
 
-const int PIN_RGB[]={2,3,4};
-const int PIN_LED_RYBG[]={10,11,12,13};
+const int PIN_RGB[]={3,4,5};
+const int PIN_LED_RYBG[]={8,9,10,11};
 const int PIN_LIGHT=A3;
 const int PIN_FIRE=A4;
-const int PIN_TH=7;
-const int PIN_SOUND=A4;
 const int PIN_SMOKE=A5;
 const int PIN_HUMAN=A0;
 const int PIN_TONE=0;
-const int PIN_BUTTON=2;
-const int PIN_FADE=13;
-const int PIN_IR=6;
-const int PIN_IR_LED=8;
+const int PIN_BUTTON=10;
+const int PIN_FADE=12;
+const int PIN_IR=9;
+const int PIN_IR_LED=13;
 const int PIN_RELAY=5;
 const int PIN_SERVO=7;
+const int PIN_BL=8;
 
 const int SERVO_MAX_L_ANGLE=140;
 const int SERVO_MAX_R_ANGLE=50;
@@ -91,28 +85,25 @@ int layState=LOW;
 
 int servo_angle=90;
 
-DHT dht(PIN_TH, DHTTYPE);
-
 void setup()
 {
     //tone_molody(1);
    
     Serial.begin(9600);
-    //init_ir();
+    init_ir();
     init_rgb();
     init_led();
-    dht.begin();
-    //init_fire();
-    //init_smoke();
-    //init_relay();
+    init_fire();
+    init_smoke();
+    init_relay();
     //init_servo();
-    //init_button();
+    init_button();
     //pinMode(PIN_TONE,OUTPUT); 
     //led_all_on();
-    //rgb_yellow();
+    init_bl();
     //tone_alert(10000);
     delay(2000);
-     //rgb_off();
+     rgb_off();
      //tone_off(); 
 }
 
@@ -121,40 +112,30 @@ unsigned char dta[20];
 void loop()
 {
      int l=readLightLevel();
-  onLightLevelRead(l);
-
-  l=analogReadLevel(PIN_SOUND);
-  onSoundLevelRead(l);
-  //l=readFireLevel();
-  //onFireLevelRead(l);
-  //l=readSmokeLevel();
-  //onSmokeLevelRead(l);
+  //onLightLevelRead(l);
+  l=readFireLevel();
+  onFireLevelRead(l);
+  l=readSmokeLevel();
+  onSmokeLevelRead(l);
   //l=readHumanLevel();
   //onHumanLevelRead(l);
-  //l = digitalRead(PIN_BUTTON);
-  //onButtonPress(l);
+  l=readBLLevel();
+  onBLLevelRead(l);
+  l = digitalRead(PIN_BUTTON);
+  onButtonPress(l);
 
-  float humi = dht.readHumidity();
-    float temp = dht.readTemperature();
-   onTHread(humi, temp);
-
-   
-  
-  //onFade();
-  // if(1==2&&IR.IsDta())                  // get IR data
-    //{
+  onFade();
+   if(IR.IsDta())                  // get IR data
+    {
         
-    //    onIRRecv();
-    //    digitalWrite(PIN_IR_LED, HIGH);
-  //  }else{
-      //  digitalWrite(PIN_IR_LED, LOW);  
-  //  }
+        onIRRecv();
+        digitalWrite(PIN_IR_LED, HIGH);
+    }else{
+        digitalWrite(PIN_IR_LED, LOW);  
+    }
     delay(120);
 }
 
-void onTHread(float humi,float temp){
-  
-}
 
 void onFade(){
 
@@ -323,45 +304,38 @@ void onButtonPress(int reading ){
       // only toggle the LED if the new button state is HIGH
       if (buttonState == HIGH) {
         ledState = !ledState;
+        rgb_white();
+      }else{
+         rgb_off();  
       }
     }
   }
-
+  
   // set the LED:
-  digitalWrite(PIN_RGB[0], ledState);
-  digitalWrite(PIN_RGB[2], ledState);
+  //digitalWrite(PIN_RGB[0], ledState);
+  //digitalWrite(PIN_RGB[2], ledState);
   // save the reading.  Next time through the loop,
   // it'll be the lastButtonState:
   lastButtonState = reading;
   
 }
 
-void onSoundLevelRead(int level){
-      String info="SoundLevel:";
-      info+=String(level);
-      //Serial.println(info);
-      int s=LOW;
-      if(level>2){
-        s=HIGH;
-      }
-      digitalWrite(PIN_LED_RYBG[1],s);
-}
 
 void onLightLevelRead(int level){
       String info="LightLevel:";
       info+=String(level);
-      //Serial.println(info);
+      Serial.println(info);
       int s=LOW;
       if(level>2){
         s=HIGH;
       }
-      digitalWrite(PIN_LED_RYBG[3],s);
+      digitalWrite(PIN_LED_RYBG[2],s);
 }
 
 void onFireLevelRead(int level){
       String info="FireLevel:";
       info+=String(level);
-      //Serial.println(info);
+      Serial.println(info);
       int s=LOW;
       if(level>1100){
         s=HIGH;
@@ -374,16 +348,16 @@ void onSmokeLevelRead(int level){
       
       String info="SmokeLevel:";
       info+=String(level);
-      //Serial.println(info);
+      Serial.println(info);
       int s=LOW;
       if(level>100){
         s=HIGH;
         //play_sound(1);
-        tone_alert(100);
+        //tone_alert(100);
       }else{
-        tone_off();  
+        //tone_off();  
       }
-      digitalWrite(PIN_LED_RYBG[3],s);
+      //digitalWrite(PIN_LED_RYBG[3],s);
       
 }
 
@@ -402,6 +376,20 @@ void onHumanLevelRead(int level){
 }
 
 
+void onBLLevelRead(int level){
+      
+      String info="BL:";
+      info+=String(level);
+      Serial.println(info);
+      int s=LOW;
+      if(level==0){
+        s=HIGH;
+      }
+      //digitalWrite(PIN_IR_LED, HIGH);
+      digitalWrite(PIN_IR_LED,s);
+      delay(1000);
+}
+
 
 int readLightLevel(){
     return analogReadLevel(PIN_LIGHT);    
@@ -410,6 +398,12 @@ int readLightLevel(){
 int readFireLevel(){
 
     return analogRead(PIN_FIRE);//analogReadLevel(PIN_FIRE);    
+
+}
+
+int readBLLevel(){
+
+    return digitalRead(PIN_BL);//analogReadLevel(PIN_FIRE);    
 
 }
 
@@ -452,10 +446,11 @@ void init_rgb(){
 }
 
 void init_led(){
-      pinMode(PIN_LED_RYBG[0], OUTPUT);
-   pinMode(PIN_LED_RYBG[1], OUTPUT);
-   pinMode(PIN_LED_RYBG[2], OUTPUT);
-   pinMode(PIN_LED_RYBG[3], OUTPUT);
+    
+      pinMode(PIN_FADE, OUTPUT);
+   //pinMode(PIN_LED_RYBG[1], OUTPUT);
+   //pinMode(PIN_LED_RYBG[2], OUTPUT);
+   //pinMode(PIN_LED_RYBG[3], OUTPUT);
 }
 
 void init_fire(){
@@ -467,8 +462,13 @@ void init_smoke(){
       pinMode(PIN_SMOKE, INPUT);
 }
 
+void init_bl(){
+     pinMode(PIN_BL,INPUT);  
+}
+
 void init_button(){
       pinMode(PIN_BUTTON,INPUT);  
+      digitalWrite(PIN_BUTTON,LOW);
 }
 
 void init_tone(){
