@@ -1,14 +1,9 @@
-#define PT_USE_TIMER
-#define PT_USE_SEM
+
 
 #include "pitches.h"
 
- #include "pt.h"
- #include "pt-sem.h"
 
 
-static struct pt thread1,thread2; 
-static struct pt_sem sem_LED;
 
 const int PIN_TONE=3;
 const int PIN_LATCH = 4;
@@ -17,8 +12,9 @@ const int PIN_DATA = 8; //这里定义了那三个脚
 const int PIN_BLS=9;
 const int PIN_LM35=A4;
 const int PIN_SMOKE=A5;
-const int PIN_DHT=6;
-const int PIN_PM25=6;
+const int PIN_BTN0=5;
+const int PIN_FF=6;
+
 
 unsigned long duration;
 unsigned long starttime;
@@ -31,12 +27,27 @@ unsigned char Dis_table[] = {0xC0,0xF9,0xA4,0xB0,0x99,0x92,0x82,0xF8,0X80,0X90};
 unsigned char Dis_buf[]   = {0xF1,0xF2,0xF4,0xF8};
 unsigned char disbuff[]  =  {0, 0, 0, 0};
 int SUM_BLS = 0;
+
+
+const long TEXI_TIME0=300000;
+const long TEXI_TIME1=60000;
+const int TEXI_AMOUNT1=1;
+
+const int FF_LIMIT=100;
+
+int texi_sum_amount=10;
+int texi_mode=1;
+long texi_timer0=0;
+long texi_timer1=0;
+
+int VAL_FF=0;
+
 int Flag_up = 1;
 int Flag_up1 = 1;
 
 int lcd_delay=0;
 
-int mode=3;
+int mode=2;
 
 int melody[] = {
   NOTE_C4, NOTE_G3, NOTE_G3, NOTE_A3, NOTE_G3, 0, NOTE_B3, NOTE_C4
@@ -54,20 +65,22 @@ void setup() {
   
   // put your setup code here, to run once:
    Serial.begin(9600);
-   //dht.begin();
-   //init_pt();
+ 
     init_tone();
-    init_pm25();
+    init_ff();
     //tone_molody(1);
+    init_texi();
+    init_btn();
     tone_on();
     delay(1000);
     tone_off();
     init_bls();
-    //init_temp();
+    //init_led();
     //init_smoke();
+    onModeChang(mode);
     init_display();
-    
-    setNumber(0);
+  
+    //setNumber(0);
 }
 
 void display()
@@ -86,111 +99,123 @@ void display()
 void loop() {
   // put your main code here, to run repeatedly:
    
- 
+
    //thread1_entry(&thread1);
-   onButtonPress();
+    int starttime = millis();
+    onButtonPress();
     if(mode==1){
      //bls
-       display();
-       onBLSRead(digitalRead(PIN_BLS));
+       
+       
                
-    }else if(mode==2){
-       tone_molody(1);
-       delay(500);
-    }else  if(mode==3){
-
-       if(lcd_delay>0){
-      display();
-   }else{
-      duration = pulseIn(PIN_PM25, LOW);
-       lowpulseoccupancy = lowpulseoccupancy+duration;
-   }
-      
-       //tone_molody(1);
-       //l=digitalRead(PIN_BLS);
-         onBLSRead(digitalRead(PIN_BLS));
-        //duration = pulseIn(PIN_PM25, LOW);
-       //lowpulseoccupancy = lowpulseoccupancy+duration;
-       if ((millis()-starttime) > sampletime_ms)
-      {
-        float r = lowpulseoccupancy/(sampletime_ms*10.0);  // Integer percentage 0=>100
-        
-        //Serial.print(lowpulseoccupancy);
-        onPM25Read(r);
-        lowpulseoccupancy = 0;
-        starttime = millis();
-      }
-
-       if(lcd_delay>0){
-        lcd_delay=lcd_delay-1;  
-    }else {
-        //lcd_delay=0;
-        setNumber(0);
-        //display();
-    } 
-      
     }
+    
+     else if(mode==2){
+       display();
+    }else  if(mode==3){ 
+       if(onFFRead(digitalRead(PIN_FF),analogRead(A5))){
+           tone_on();
+           delay(10);
+           tone_off();
+       } 
+    }
+    delay(20);
+    int looptime = millis() - starttime;
+    if(onBLSRead(digitalRead(PIN_BLS))){
+         tone_on();
+         delay(1000);
+         tone_off(); 
    
-   //thread2_entry(&thread2);
-  // display();
-   
-    //Serial.print(lcd_delay);
-}
+          onModeChang(mode);  
+    }
+    if(onTexiAmountCal( looptime)){
 
-static int thread1_entry(struct pt *pt)
-{
-    PT_BEGIN(pt);
-    while (1)
-    {
-    PT_SEM_WAIT(pt,&sem_LED); //LED有在用吗？
+          setNumber(texi_sum_amount);
+          onModeChang(mode);
+    }
+    
     display();
-    
-    //PT_TIMER_DELAY(pt,1000);//留一秒
-    PT_SEM_SIGNAL(pt,&sem_LED);//用完了。
-    PT_YIELD(pt); //看看别人要用么？
-    }
-    PT_END(pt);
 }
 
-static int thread2_entry(struct pt *pt)
-{
-    PT_BEGIN(pt);
-    while (1)
-    {
-    PT_SEM_WAIT(pt,&sem_LED); //LED有在用吗？
-    
-     //l=readSmokeLevel();
-    //onSmokeLevelRead(l);
-   
-    //duration = pulseIn(PIN_PM25, LOW);
-    lowpulseoccupancy = lowpulseoccupancy+duration;
-    //PT_TIMER_DELAY(pt,1000);//留一秒
-    PT_SEM_SIGNAL(pt,&sem_LED);//用完了。
-    PT_YIELD(pt); //看看别人要用么？
-    }
-    PT_END(pt);
-}
+
+
+
 
 void onButtonPress(){
      if(digitalRead(A1)==LOW){
          mode=1; 
-         SUM_BLS=0;
-         setNumber(SUM_BLS);
+         onModeChang(mode);
+         
          delay(500); 
      }
      if(digitalRead(A2)==LOW){
         mode=2;
+         onModeChang(mode);
          delay(500);
      }
      if(digitalRead(A3)==LOW){
           mode=3; 
-         
+         onModeChang(mode);
          delay(500);
      } 
+     if(digitalRead(PIN_BTN0)==HIGH){
+         if(mode>=3){
+           mode=1;
+           }
+         else 
+          { 
+            mode++;
+            }
+         onModeChang(mode);
+         delay(500);
+     }
      
   
 }
 
+void onModeChang(int m){
+    
+     if(m==1){
+         setNumber(SUM_BLS);
+     }else if(m==2){
+         setNumber(texi_sum_amount);
+     }else if(m==3){
+         setNumber(VAL_FF);
+     }
+     //digitalWrite(m,LOW);
+  
+}
+
+int onTexiAmountCal(int looptime){
+       //int ms=millis();
+       //int diff=ms-texi_timer0;
+       
+      
+       if(texi_timer0<TEXI_TIME0){
+        texi_timer0+=looptime;
+         Serial.println(texi_timer0);
+        return false;
+       }else if(texi_mode==1){
+          texi_sum_amount+=TEXI_AMOUNT1;
+          texi_mode=2;
+          tone_on();
+          delay(200);
+          tone_off();
+          return true; 
+       }
+
+       //diff=ms-texi_timer1;
+       
+       texi_timer1+=looptime;
+
+       Serial.println(texi_timer1);
+       if(texi_timer1<TEXI_TIME1) return false;
+
+       texi_timer1=0;
+       texi_sum_amount+=TEXI_AMOUNT1;
+       return true;
+  
+}
 
 void onTempRead(float s){
    float c = (s - 32 - 459.67) / 1.8;
@@ -216,10 +241,7 @@ bool onBLSRead(int s){
     if(s==0){
     SUM_BLS=SUM_BLS+1;
     setNumber(SUM_BLS); 
-    tone_on();
-    delay(800);
-    tone_off(); 
-    lcd_delay=6000;
+   
     return true;
     }
     return false;
@@ -242,6 +264,13 @@ void onSmokeLevelRead(int level){
       
 }
 
+boolean onFFRead(int dval,int aval){
+   // Serial.println(dval);
+    //Serial.println(aval);
+    setNumber(aval);
+    return aval>=FF_LIMIT;
+}
+
 int readSmokeLevel(){
 
     return analogRead(PIN_SMOKE);
@@ -249,27 +278,37 @@ int readSmokeLevel(){
 
 }
 
-void init_pt(){
-   PT_SEM_INIT(&sem_LED,1);   
-   //初始化任务记录变量
-    PT_INIT(&thread1);
-    PT_INIT(&thread2);
-}
+
 
 void init_tone(){
     pinMode(PIN_TONE,OUTPUT);  
     
 }
 
+void init_btn(){
+    pinMode(PIN_BTN0,INPUT);  
+}
+
+void init_ff(){
+    pinMode(PIN_FF,INPUT);  
+}
+
 void init_bls(){
     pinMode(PIN_BLS,INPUT);  
 }
 
-void init_temp(){
-    
+void init_led(){
+    pinMode(1,OUTPUT);
+    pinMode(2,OUTPUT);
+    pinMode(3,OUTPUT);
+    pinMode(4,OUTPUT);
 }
 
+void init_texi(){
 
+   // texi_timer0=millis();
+  
+}
 
 void init_display(){
    pinMode(PIN_LATCH,OUTPUT);
@@ -281,10 +320,6 @@ void init_smoke(){
       pinMode(PIN_SMOKE, INPUT);
 }
 
-void init_pm25(){
-      pinMode(PIN_PM25,INPUT);
-      starttime = millis();
-}
 
 
 void setNumber(int n){
